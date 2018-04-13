@@ -10,7 +10,6 @@ import torch.nn as nn
 import torch.nn.functional as f
 import torch.optim as optim
 
-
 transition = namedtuple('Transition', ('state', 'action', 'next_state', 'reward'))
 
 
@@ -35,7 +34,7 @@ class ReplayMemory(object):
 
 
 class DQN(nn.Module):
-    def __init__(self):
+    def __init__(self, hf_num):
         super(DQN, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
         self.bn1 = nn.BatchNorm2d(16)
@@ -43,7 +42,7 @@ class DQN(nn.Module):
         self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
         self.bn3 = nn.BatchNorm2d(32)
-        self.head = nn.Linear(448, 2)
+        self.head = nn.Linear(hf_num[0], hf_num[1])  # head_feature_num: 0 in_feature_num, 1 out_feature_num
 
     def forward(self, x):
         x = f.relu(self.bn1(self.conv1(x)))
@@ -53,10 +52,10 @@ class DQN(nn.Module):
 
 
 class DQNInterface:
-    def __init__(self, param):
+    def __init__(self, liner_param, hyper_param, path):
         self.use_cuda = torch.cuda.is_available()
-        self.policy_net = DQN()
-        self.target_net = DQN()
+        self.policy_net = DQN(liner_param)
+        self.target_net = DQN(liner_param)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()  # Set this network as evaluation mode
 
@@ -68,7 +67,8 @@ class DQNInterface:
             self.byte_tensor = torch.cuda.ByteTensor if self.use_cuda else torch.ByteTensor
             self.tensor = self.float_tensor
 
-        self.param = param
+        self.hyper_param = hyper_param
+        self.path = path
 
         self._optimizer = optim.RMSprop(self.policy_net.parameters())
         self.memory = ReplayMemory(10000)
@@ -78,7 +78,8 @@ class DQNInterface:
 
     def select_action(self, state):
         sample = random.random()
-        eps_threshold = self.param[3] + (self.param[2] - self.param[3]) * math.exp(-1. * self.steps_done / self.param[4])
+        eps_threshold = self.hyper_param[3] + (self.hyper_param[2] - self.hyper_param[3]) * \
+                                               math.exp(-1. * self.steps_done / self.hyper_param[4])
         self.steps_done += 1
         if sample > eps_threshold:
             data_in = Variable(state, volatile=True).type(self.float_tensor)
@@ -95,10 +96,10 @@ class DQNInterface:
         self.steps_done = done[1]
 
     def train(self):
-        if len(self.memory) < self.param[0]:
+        if len(self.memory) < self.hyper_param[0]:
             return
 
-        transitions = self.memory.sample(self.param[0])
+        transitions = self.memory.sample(self.hyper_param[0])
         # Transpose the batch (see http://stackoverflow.com/a/19343/3343043 for
         # detailed explanation).
         batch = transition(*zip(*transitions))
@@ -118,10 +119,10 @@ class DQNInterface:
         state_action_values = self.policy_net(state_batch).gather(1, action_batch)
 
         # Compute V(s_{t+1}) for all next states.
-        next_state_values = Variable(torch.zeros(self.param[0]).type(self.tensor))
+        next_state_values = Variable(torch.zeros(self.hyper_param[0]).type(self.tensor))
         next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0]
         # Compute the expected Q values
-        expected_state_action_values = (next_state_values * self.param[1]) + reward_batch
+        expected_state_action_values = (next_state_values * self.hyper_param[1]) + reward_batch
         # Undo volatility (which was used to prevent unnecessary gradients)
         expected_state_action_values = Variable(expected_state_action_values.data)
 
@@ -136,8 +137,8 @@ class DQNInterface:
 
         self._optimizer.step()
 
-        # Update the target network
-        if self.episode_done % self.param[-1] == 0 and self.episode_done > 0:
+        # Update the target network and save
+        if self.episode_done % self.hyper_param[-1] == 0 and self.episode_done > 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
-            torch.save(self.target_net.state_dict(), "/home/omnisky/cartpole")
-            print('Model has been saved')
+            torch.save(self.target_net.state_dict(), self.path[0] + self.path[1])
+            print('Model has been saved to {}'.format(self.path[0]))
