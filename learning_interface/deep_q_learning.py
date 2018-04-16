@@ -34,7 +34,7 @@ class ReplayMemory(object):
 
 
 class DQN(nn.Module):
-    def __init__(self, hf_num):
+    def __init__(self, liner_feature):
         super(DQN, self).__init__()
         self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
         self.bn1 = nn.BatchNorm2d(16)
@@ -42,7 +42,8 @@ class DQN(nn.Module):
         self.bn2 = nn.BatchNorm2d(32)
         self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
         self.bn3 = nn.BatchNorm2d(32)
-        self.head = nn.Linear(hf_num[0], hf_num[1])  # head_feature_num: 0 in_feature_num, 1 out_feature_num
+        # head_feature_num: 0 in_feature_num, 1 out_feature_num
+        self.head = nn.Linear(liner_feature[0], liner_feature[1])
 
     def forward(self, x):
         x = f.relu(self.bn1(self.conv1(x)))
@@ -51,11 +52,17 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-class DQNInterface:
+class DQNTrainInterface:
     def __init__(self, liner_param, hyper_param, path):
         self.use_cuda = torch.cuda.is_available()
         self.policy_net = DQN(liner_param)
         self.target_net = DQN(liner_param)
+
+        if torch.cuda.device_count() > 1:
+            print('Using {} GPUs'.format(torch.cuda.device_count()))
+            self.policy_net = nn.DataParallel(self.policy_net)
+            self.target_net = nn.DataParallel(self.target_net)
+
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()  # Set this network as evaluation mode
 
@@ -71,16 +78,16 @@ class DQNInterface:
         self.path = path
 
         self._optimizer = optim.RMSprop(self.policy_net.parameters())
-        self.memory = ReplayMemory(10000)
+        self.memory = ReplayMemory(12800)
 
         self.episode_done = 0
-        self.steps_done = 0
+        self._steps_done = 0
 
     def select_action(self, state):
         sample = random.random()
         eps_threshold = self.hyper_param[3] + (self.hyper_param[2] - self.hyper_param[3]) * \
-                                               math.exp(-1. * self.steps_done / self.hyper_param[4])
-        self.steps_done += 1
+                                               math.exp(-1. * self._steps_done / self.hyper_param[4])
+        self._steps_done += 1
         if sample > eps_threshold:
             data_in = Variable(state, volatile=True).type(self.float_tensor)
             data_out = self.policy_net(data_in)
@@ -88,12 +95,10 @@ class DQNInterface:
         else:
             return self.long_tensor([[random.randrange(2)]])
 
-    def set_done(self, done):
-        if done[2]:
-            self.episode_done = done[0]
-        else:
-            self.episode_done = 0
-        self.steps_done = done[1]
+    def set_done(self, episode_count):
+        if not self.episode_done == episode_count:
+            self._steps_done = 0
+        self.episode_done = episode_count
 
     def train(self):
         if len(self.memory) < self.hyper_param[0]:
@@ -138,7 +143,32 @@ class DQNInterface:
         self._optimizer.step()
 
         # Update the target network and save
-        if self.episode_done % self.hyper_param[-1] == 0 and self.episode_done > 0:
+        if self.episode_done % self.hyper_param[-1] == 0 and self.episode_done > 0 and self._steps_done == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
-            torch.save(self.target_net.state_dict(), self.path[0] + self.path[1])
-            print('Model has been saved to {}'.format(self.path[0]))
+            torch.save(self.target_net.state_dict(), self.path[0] + self.path[1] + str(self.episode_done))
+            print('Model {} has been saved to {}'.format(self.path[1] + str(self.episode_done), self.path[0]))
+
+
+class DQNEvalInterface:
+    def __init__(self, liner_feature, file_name):
+        self.use_cuda = torch.cuda.is_available()
+        self.policy_net = DQN(liner_feature)
+
+        if torch.cuda.device_count() > 1:
+            print('Using {} GPUs'.format(torch.cuda.device_count()))
+            self.policy_net = nn.DataParallel(self.policy_net)
+
+        self.policy_net.load_state_dict(torch.load(file_name))
+        self.policy_net.eval()
+
+        if self.use_cuda:
+            self.policy_net.cuda()
+            self.float_tensor = torch.cuda.FloatTensor if self.use_cuda else torch.FloatTensor
+            self.long_tensor = torch.cuda.LongTensor if self.use_cuda else torch.LongTensor
+            self.byte_tensor = torch.cuda.ByteTensor if self.use_cuda else torch.ByteTensor
+            self.tensor = self.float_tensor
+
+    def generate_action(self, state):
+        data_in = Variable(state, volatile=True).type(self.float_tensor)
+        data_out = self.policy_net(data_in)
+        return data_out.data.max(1)[1].view(1, 1)
