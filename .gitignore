@@ -7,6 +7,7 @@
 # Setuptools distribution and build folders.
 /dist/
 /build
+/runs
 
 # Virtualenv
 /env

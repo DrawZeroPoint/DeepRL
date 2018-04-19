@@ -6,7 +6,7 @@ to evaluate certain learning algorithm.
 from gym_interface import env_interface as ei
 from io_tools import pretty_print as pp
 from io_tools import file_interface as fi
-from learning_interface import visual_dqn
+from learning_interface import classic_dqn
 from network_tools import network_info as ni
 from visualize_interface import tensorboard_interface as ti
 from visualize_interface import vis_interface as vi
@@ -19,17 +19,10 @@ episode_num = 100  # Considered solved when the average reward is greater than o
 environment = ei.EnvInterface(env_name, episode_num)
 
 """ Create the network for generating actions """
-network_input_height = 40
-network_input_width  = 80
-network_batch_size   = [16, 32, 32]
-network_kernel_stride_pad = [[5, 2, 0], [5, 2, 0], [5, 2, 0]]
-
-liner_feature_num = ni.get_liner_input_dim(network_input_height, network_input_width,
-                                           network_batch_size[-1], network_kernel_stride_pad)
-shape_param = [liner_feature_num, environment.env.action_space.n]
+shape_param = [4, 2, 164]
 
 # Path and file name of the trained model
-model_path = '/home/omnisky/cartpole_exp/exp8/'
+model_path = '/home/omnisky/cartpole_exp/classic2/'
 name_list = fi.get_file_list(model_path, env_name)
 
 """Create visualization interface"""
@@ -43,7 +36,7 @@ for file_name in name_list:
     print(iter_counter)
 
     full_path = model_path + env_name + str(file_name)
-    network = visual_dqn.DQNEvalInterface(shape_param, full_path)
+    network = classic_dqn.NetworkEvalInterface(shape_param, full_path)
 
     """Create statics values"""
     episode_temp = 0
@@ -53,11 +46,11 @@ for file_name in name_list:
     # Loop over until all episodes have been executed
     while not environment.finished:
         # Get the state before taking action
-        prev_state = environment.get_last_state()
+        state = environment.get_classic_state()
 
         # visualization.plot_image(prev_state.cpu().squeeze(0).permute(1, 2, 0).numpy())
-        action = network.generate_action(prev_state)
-        environment.step_once(action)
+        action = network.generate_action(state)
+        environment.step_once_classic(action)
 
         observation = environment.observation
         pp.pretty_print([environment.episode_count, environment.step_count], action, observation[1], True)

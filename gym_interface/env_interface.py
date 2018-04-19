@@ -1,10 +1,10 @@
 import gym
+from gym_interface import gym_info
 import numpy as np
 
 import torch
 import torchvision.transforms as t
 
-from gym_interface import gym_info
 from PIL import Image
 
 
@@ -19,16 +19,13 @@ class EnvInterface:
 
         self.finished = False
         self.episode_num = episode_num
-        self.step_num = 0
-
-        self.episode_count = 0
-        self.step_count = 0
+        self.step_num = self.episode_count = self.step_count = 0
 
         self.observation = self.env.reset()
+        self.classic_state = self.env.reset()
 
         self.prev_screen = None
         self.curr_screen = None
-
         self.prev_state = None
         self.curr_state = None
 
@@ -79,14 +76,31 @@ class EnvInterface:
         self.curr_screen = self._get_screen()
         self.curr_state = self.curr_screen - self.prev_screen
 
+    def get_classic_state(self):
+        if self.step_count != 0:
+            self.classic_state = self.observation[0]
+        return self.classic_state
+
     def _next_episode(self):
         self.episode_count += 1
         self.step_count = 0
-        self.env.reset()
+        self.classic_state = self.env.reset()
 
     # Similar with get_screen but faster
     def render_env(self):
         self.env.render()
+
+    def reset(self):
+        self.finished = False
+        self.step_num = self.episode_count = self.step_count = 0
+
+        self.observation = self.env.reset()
+        self.classic_state = self.env.reset()
+
+        self.prev_screen = None
+        self.curr_screen = None
+        self.prev_state = None
+        self.curr_state = None
 
     def step_once(self, act):
         if self.episode_count < self.episode_num:
@@ -100,6 +114,22 @@ class EnvInterface:
             else:
                 if gym_info.get_observation_value(self.observation, 'done'):
                     self._next_episode()
+                    self.curr_state = None  # Force the failed state to be None
                     if self.episode_count == self.episode_num:
                         self.finished = True
 
+    def step_once_classic(self, act):
+        if self.episode_count < self.episode_num:
+            self.observation = self.env.step(act)
+            self.render_env()
+            self.step_count += 1
+
+            # Turn to next episode
+            if self.step_num and self.step_count == self.step_num:
+                self._next_episode()
+            else:
+                if gym_info.get_observation_value(self.observation, 'done'):
+                    self._next_episode()
+                    self.curr_state = None  # Force the failed state to be None
+                    if self.episode_count == self.episode_num:
+                        self.finished = True
