@@ -12,7 +12,7 @@ from visualize_interface import tensorboard_interface as ti
 """ Create an environment that run the simulation till fail for episode_num times """
 # We can also set the step_num (default:0 for no limit) for each episode in set_up for limiting that
 env_name = 'CartPole-v0'
-episode_num = 2000
+episode_num = 1000
 environment = ei.EnvInterface(env_name, episode_num)
 
 """ Create the network for generating actions """
@@ -25,9 +25,9 @@ shape_param = [4, 2, 164]
 # REWARD_EXPAND
 # MODEL_UPDATE
 # MODEL_SAVE
-hyper_param = [64, 0.99, 0.75, 0.05, 200, 0.1, 10, 500]
+hyper_param = [64, 0.99, 0.75, 0.05, 200, 0.1, 10, 200]
 # Path and file name for trained model
-path = ['/home/omnisky/cartpole_exp/classic2/', env_name]
+path = ['/home/omnisky/cartpole_exp/cls_render_first/', env_name]
 network = classic_dqn.NetworkTrainInterface(shape_param, hyper_param, path, use_trained=None)
 
 """Create the memory for storing training data"""

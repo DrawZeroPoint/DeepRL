@@ -1,6 +1,7 @@
 import gym
 from gym_interface import gym_info
 import numpy as np
+import time
 
 import torch
 import torchvision.transforms as t
@@ -120,8 +121,11 @@ class EnvInterface:
 
     def step_once_classic(self, act):
         if self.episode_count < self.episode_num:
+            # self.env.render()
             self.observation = self.env.step(act)
-            self.render_env()
+            """TODO: Verify the usage of render can have an impact on the observation"""
+            self.env.render()
+            # time.sleep(0.1)  # pause
             self.step_count += 1
 
             # Turn to next episode

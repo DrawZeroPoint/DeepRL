@@ -22,7 +22,7 @@ environment = ei.EnvInterface(env_name, episode_num)
 shape_param = [4, 2, 164]
 
 # Path and file name of the trained model
-model_path = '/home/omnisky/cartpole_exp/classic2/'
+model_path = '/home/omnisky/cartpole_exp/cls_render/'
 name_list = fi.get_file_list(model_path, env_name)
 
 """Create visualization interface"""
